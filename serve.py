@@ -13,7 +13,6 @@ from flask import Flask, request, session, url_for, redirect, \
      render_template, abort, g, flash, _app_ctx_stack
 from flask_limiter import Limiter
 from werkzeug import check_password_hash, generate_password_hash
-import pymongo
 
 from utils import safe_pickle_dump, strip_version, isvalidid, Config
 
@@ -194,7 +193,8 @@ def encode_json(ps, n=10, send_images=True, send_abstracts=True):
     struct['originally_published_time'] = '%s/%s/%s' % (timestruct.month, timestruct.day, timestruct.year)
 
     # fetch amount of discussion on this paper
-    struct['num_discussion'] = comments.count({ 'pid': p['_rawid'] })
+    # struct['num_discussion'] = comments.count({ 'pid': p['_rawid'] })
+    struct['num_discussion'] = 0
 
     # arxiv comments from the authors (when they submit the paper)
     cc = p.get('arxiv_comment', '')
@@ -265,16 +265,17 @@ def discuss():
   papers = [db[pid]] if pid in db else []
 
   # fetch the comments
-  comms_cursor = comments.find({ 'pid':pid }).sort([('time_posted', pymongo.DESCENDING)])
-  comms = list(comms_cursor)
-  for c in comms:
-    c['_id'] = str(c['_id']) # have to convert these to strs from ObjectId, and backwards later http://api.mongodb.com/python/current/tutorial.html
+  #comms_cursor = comments.find({ 'pid':pid }).sort([('time_posted', pymongo.DESCENDING)])
+  #comms = list(comms_cursor)
+  comms = []
+  #for c in comms:
+  #  c['_id'] = str(c['_id']) # have to convert these to strs from ObjectId, and backwards later http://api.mongodb.com/python/current/tutorial.html
 
   # fetch the counts for all tags
   tag_counts = []
-  for c in comms:
-    cc = [tags_collection.count({ 'comment_id':c['_id'], 'tag_name':t }) for t in TAGS]
-    tag_counts.append(cc);
+  #for c in comms:
+  #  cc = [tags_collection.count({ 'comment_id':c['_id'], 'tag_name':t }) for t in TAGS]
+  #  tag_counts.append(cc);
 
   # and render
   ctx = default_context(papers, render_format='default', comments=comms, gpid=pid, tags=TAGS, tag_counts=tag_counts)
@@ -319,16 +320,16 @@ def comment():
 @app.route("/discussions", methods=['GET'])
 def discussions():
   # return most recently discussed papers
-  comms_cursor = comments.find().sort([('time_posted', pymongo.DESCENDING)]).limit(100)
+  #comms_cursor = comments.find().sort([('time_posted', pymongo.DESCENDING)]).limit(100)
 
   # get the (unique) set of papers.
   papers = []
-  have = set()
-  for e in comms_cursor:
-    pid = e['pid']
-    if pid in db and not pid in have:
-      have.add(pid)
-      papers.append(db[pid])
+  #have = set()
+  #for e in comms_cursor:
+  #  pid = e['pid']
+  #  if pid in db and not pid in have:
+  #    have.add(pid)
+  #    papers.append(db[pid])
 
   ctx = default_context(papers, render_format="discussions")
   return render_template('main.html', **ctx)
@@ -406,15 +407,16 @@ def top():
 @app.route('/toptwtr', methods=['GET'])
 def toptwtr():
   """ return top papers """
-  ttstr = request.args.get('timefilter', 'day') # default is day
-  tweets_top = {'day':tweets_top1, 'week':tweets_top7, 'month':tweets_top30}[ttstr]
-  cursor = tweets_top.find().sort([('vote', pymongo.DESCENDING)]).limit(100)
+  #ttstr = request.args.get('timefilter', 'day') # default is day
+  ttstr = 'day'
+  #tweets_top = {'day':tweets_top1, 'week':tweets_top7, 'month':tweets_top30}[ttstr]
+  #cursor = tweets_top.find().sort([('vote', pymongo.DESCENDING)]).limit(100)
   papers, tweets = [], []
-  for rec in cursor:
-    if rec['pid'] in db:
-      papers.append(db[rec['pid']])
-      tweet = {k:v for k,v in rec.items() if k != '_id'}
-      tweets.append(tweet)
+  #for rec in cursor:
+  #  if rec['pid'] in db:
+  #    papers.append(db[rec['pid']])
+  #    tweet = {k:v for k,v in rec.items() if k != '_id'}
+  #    tweets.append(tweet)
   ctx = default_context(papers, render_format='toptwtr', tweets=tweets,
                         msg='Top papers mentioned on Twitter over last ' + ttstr + ':')
   return render_template('main.html', **ctx)
@@ -676,24 +678,6 @@ if __name__ == "__main__":
   TOP_SORTED_PIDS = cache['top_sorted_pids']
   SEARCH_DICT = cache['search_dict']
 
-  print('connecting to mongodb...')
-  client = pymongo.MongoClient()
-  mdb = client.arxiv
-  tweets_top1 = mdb.tweets_top1
-  tweets_top7 = mdb.tweets_top7
-  tweets_top30 = mdb.tweets_top30
-  comments = mdb.comments
-  tags_collection = mdb.tags
-  goaway_collection = mdb.goaway
-  follow_collection = mdb.follow
-  print('mongodb tweets_top1 collection size:', tweets_top1.count())
-  print('mongodb tweets_top7 collection size:', tweets_top7.count())
-  print('mongodb tweets_top30 collection size:', tweets_top30.count())
-  print('mongodb comments collection size:', comments.count())
-  print('mongodb tags collection size:', tags_collection.count())
-  print('mongodb goaway collection size:', goaway_collection.count())
-  print('mongodb follow collection size:', follow_collection.count())
-  
   TAGS = ['insightful!', 'thank you', 'agree', 'disagree', 'not constructive', 'troll', 'spam']
 
   # start
